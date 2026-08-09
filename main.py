@@ -22,6 +22,12 @@ rzp_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
 def get_db_connection():
     return psycopg2.connect(os.environ.get("DATABASE_URL"))
 
+# Health check endpoint
+@app.route('/health', methods=['GET'])
+def health_check():
+    return jsonify({"status": "ok"}), 200
+
+
 # --- WEBHOOK ROUTES ---
 @app.route('/webhook', methods=['GET', 'POST'])
 def webhook():
