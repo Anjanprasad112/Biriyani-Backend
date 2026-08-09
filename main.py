@@ -56,13 +56,22 @@ def webhook():
 
 @app.route('/razorpay-webhook', methods=['POST'])
 def razorpay_webhook():
-    """Handles successful payments and decrements inventory."""
+    """Handles successful payments, stores payment details, and decrements inventory."""
     data = request.get_json()
     try:
         if data.get('event') == 'payment_link.paid':
-            notes = data['payload']['payment_link']['entity']['notes']
+            # Extract the entities from the Razorpay payload
+            payment_link_entity = data['payload']['payment_link']['entity']
+            payment_entity = data['payload']['payment']['entity']
+            
+            # Extract our custom notes
+            notes = payment_link_entity.get('notes', {})
             order_id = notes.get('order_id')
             sender_phone = notes.get('phone_number')
+            
+            # Extract specific payment details
+            payment_id = payment_entity.get('id')
+            amount_paid = int(payment_entity.get('amount') / 100) # Convert from paise back to Rupees
             
             conn = get_db_connection()
             cur = conn.cursor(cursor_factory=RealDictCursor)
@@ -71,18 +80,33 @@ def razorpay_webhook():
             cur.execute("UPDATE orders SET status = 'Paid' WHERE order_id = %s RETURNING cart_items", (order_id,))
             order = cur.fetchone()
             
-            # 2. Decrement Inventory
+            # 2. Store the exact Payment Details in the database
+            cur.execute("""
+                INSERT INTO payments (payment_id, order_id, phone_number, amount)
+                VALUES (%s, %s, %s, %s)
+            """, (payment_id, order_id, sender_phone, amount_paid))
+            
+            # 3. Decrement Inventory
             if order:
                 cart = order['cart_items']
                 for item in cart:
                     cur.execute("UPDATE menu SET inventory = inventory - %s WHERE id = %s", (item['qty'], item['id']))
             
-            # 3. Clear session and notify user
+            # 4. Clear session and notify user
             cur.execute("DELETE FROM sessions WHERE phone_number = %s", (sender_phone,))
             conn.commit()
             conn.close()
             
-            send_reply(sender_phone, f"✅ *Payment Successful!*\n\nYour order ({order_id}) has been placed and is being prepared. Thank you for choosing Watave's Biriyani Point!")
+            # Include the transaction ID and amount in the customer receipt
+            receipt_msg = (
+                f"✅ *Payment Successful!*\n\n"
+                f"Your order ({order_id}) has been placed and is being prepared.\n\n"
+                f"🧾 *Transaction Details:*\n"
+                f"Amount Paid: ₹{amount_paid}\n"
+                f"Payment ID: {payment_id}\n\n"
+                f"Thank you for choosing Watave's Biriyani Point!"
+            )
+            send_reply(sender_phone, receipt_msg)
             
     except Exception as e:
         print(f"Error processing Razorpay webhook: {e}")
