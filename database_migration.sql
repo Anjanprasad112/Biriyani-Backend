@@ -1,0 +1,23 @@
+-- Run once against the existing PostgreSQL database.
+ALTER TABLE menu
+  ALTER COLUMN name SET NOT NULL,
+  ALTER COLUMN price SET NOT NULL,
+  ALTER COLUMN inventory SET NOT NULL,
+  ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+ALTER TABLE menu DROP CONSTRAINT IF EXISTS menu_price_non_negative;
+ALTER TABLE menu ADD CONSTRAINT menu_price_non_negative CHECK (price >= 0);
+ALTER TABLE menu DROP CONSTRAINT IF EXISTS menu_inventory_non_negative;
+ALTER TABLE menu ADD CONSTRAINT menu_inventory_non_negative CHECK (inventory >= 0);
+
+ALTER TABLE orders
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
+
+CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
+CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at DESC);
+

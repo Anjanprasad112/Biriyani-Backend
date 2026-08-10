@@ -9,17 +9,6 @@ from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
-# Admin dashboard access. Kept explicit so no additional environment variable
-# is required; add the deployed admin origin here when going to production.
-@app.after_request
-def add_cors_headers(response):
-    origin = request.headers.get("Origin")
-    if origin in {"http://localhost:3000", "http://127.0.0.1:3000"}:
-        response.headers["Access-Control-Allow-Origin"] = origin
-        response.headers["Access-Control-Allow-Headers"] = "Content-Type"
-        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PATCH, DELETE, OPTIONS"
-    return response
-
 # --- SECRETS & CONFIG ---
 ACCESS_TOKEN = os.environ.get("ACCESS_TOKEN")
 PHONE_NUMBER_ID = os.environ.get("PHONE_NUMBER_ID")
@@ -79,11 +68,7 @@ def razorpay_webhook():
             cur = conn.cursor(cursor_factory=RealDictCursor)
             
             # 1. Update Order Status
-            cur.execute("""
-                UPDATE orders SET status = 'Paid', paid_at = NOW(), updated_at = NOW()
-                WHERE order_id = %s AND status = 'Pending'
-                RETURNING cart_items
-            """, (order_id,))
+            cur.execute("UPDATE orders SET status = 'Paid' WHERE order_id = %s RETURNING cart_items", (order_id,))
             order = cur.fetchone()
             
             # 2. Decrement Inventory
@@ -102,161 +87,6 @@ def razorpay_webhook():
     except Exception as e:
         print(f"Error processing Razorpay webhook: {e}")
     return jsonify({"status": "ok"}), 200
-
-# --- ADMIN DASHBOARD API ---
-@app.route('/api/admin/<path:_path>', methods=['OPTIONS'])
-def admin_options(_path):
-    return '', 204
-
-
-@app.get('/api/admin/dashboard')
-def admin_dashboard():
-    """Summary cards and a zero-filled seven-day sales series."""
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("""
-            SELECT
-              COALESCE(SUM(total_amount) FILTER (WHERE paid_at::date = CURRENT_DATE), 0) AS today_revenue,
-              COUNT(*) FILTER (WHERE paid_at::date = CURRENT_DATE) AS today_orders,
-              COUNT(*) FILTER (WHERE status IN ('Paid', 'Preparation', 'Ready')) AS active_orders,
-              COUNT(*) FILTER (WHERE status = 'Collected' AND completed_at::date = CURRENT_DATE) AS completed_today,
-              COALESCE(AVG(total_amount) FILTER (WHERE paid_at::date = CURRENT_DATE), 0)::integer AS average_order_value
-            FROM orders
-        """)
-        summary = dict(cur.fetchone())
-        cur.execute("""
-            SELECT d.day::date AS day, TO_CHAR(d.day, 'Dy') AS label,
-                   COALESCE(SUM(o.total_amount), 0)::integer AS revenue
-            FROM generate_series(CURRENT_DATE - INTERVAL '6 days', CURRENT_DATE, INTERVAL '1 day') d(day)
-            LEFT JOIN orders o ON o.paid_at::date = d.day::date
-            GROUP BY d.day ORDER BY d.day
-        """)
-        summary['sales_last_7_days'] = cur.fetchall()
-        return jsonify(summary)
-    finally:
-        conn.close()
-
-
-@app.get('/api/admin/orders')
-def admin_orders():
-    include_history = request.args.get('history', 'false').lower() == 'true'
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        if include_history:
-            cur.execute("SELECT * FROM orders ORDER BY created_at DESC LIMIT 250")
-        else:
-            cur.execute("""
-                SELECT * FROM orders
-                WHERE status IN ('Paid', 'Preparation', 'Ready')
-                ORDER BY created_at ASC
-            """)
-        return jsonify(cur.fetchall())
-    finally:
-        conn.close()
-
-
-@app.patch('/api/admin/orders/<order_id>/status')
-def admin_update_order_status(order_id):
-    new_status = (request.get_json(silent=True) or {}).get('status')
-    allowed_next = {'Paid': 'Preparation', 'Preparation': 'Ready', 'Ready': 'Collected'}
-    if new_status not in allowed_next.values():
-        return jsonify({'error': 'Invalid order status'}), 400
-
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("SELECT status FROM orders WHERE order_id = %s FOR UPDATE", (order_id,))
-        order = cur.fetchone()
-        if not order:
-            return jsonify({'error': 'Order not found'}), 404
-        if allowed_next.get(order['status']) != new_status:
-            return jsonify({'error': f"Cannot move {order['status']} to {new_status}"}), 409
-        cur.execute("""
-            UPDATE orders
-            SET status = %s, updated_at = NOW(),
-                completed_at = CASE WHEN %s = 'Collected' THEN NOW() ELSE completed_at END
-            WHERE order_id = %s RETURNING *
-        """, (new_status, new_status, order_id))
-        updated = cur.fetchone()
-        conn.commit()
-        return jsonify(updated)
-    finally:
-        conn.close()
-
-
-def parse_dish_payload(partial=False):
-    data = request.get_json(silent=True) or {}
-    result = {}
-    if not partial or 'name' in data:
-        name = str(data.get('name', '')).strip()
-        if not name:
-            raise ValueError('Dish name is required')
-        result['name'] = name
-    for field in ('price', 'inventory'):
-        if not partial or field in data:
-            value = int(data.get(field, 0))
-            if value < 0:
-                raise ValueError(f'{field} cannot be negative')
-            result[field] = value
-    if 'is_active' in data:
-        result['is_active'] = bool(data['is_active'])
-    return result
-
-
-@app.route('/api/admin/menu', methods=['GET', 'POST'])
-def admin_menu():
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        if request.method == 'GET':
-            cur.execute("SELECT * FROM menu ORDER BY is_active DESC, name")
-            return jsonify(cur.fetchall())
-        try:
-            dish = parse_dish_payload()
-        except (ValueError, TypeError) as exc:
-            return jsonify({'error': str(exc)}), 400
-        cur.execute("""
-            INSERT INTO menu (name, price, inventory)
-            VALUES (%s, %s, %s) RETURNING *
-        """, (dish['name'], dish['price'], dish['inventory']))
-        created = cur.fetchone()
-        conn.commit()
-        return jsonify(created), 201
-    finally:
-        conn.close()
-
-
-@app.route('/api/admin/menu/<int:item_id>', methods=['PATCH', 'DELETE'])
-def admin_menu_item(item_id):
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        if request.method == 'DELETE':
-            # Soft-delete keeps historical cart/order references readable.
-            cur.execute("UPDATE menu SET is_active = FALSE, updated_at = NOW() WHERE id = %s RETURNING id", (item_id,))
-            if not cur.fetchone():
-                return jsonify({'error': 'Dish not found'}), 404
-            conn.commit()
-            return jsonify({'status': 'deleted'})
-        try:
-            dish = parse_dish_payload(partial=True)
-        except (ValueError, TypeError) as exc:
-            return jsonify({'error': str(exc)}), 400
-        if not dish:
-            return jsonify({'error': 'No fields to update'}), 400
-        columns = list(dish.keys())
-        assignments = ', '.join(f"{column} = %s" for column in columns)
-        values = [dish[column] for column in columns]
-        cur.execute(f"UPDATE menu SET {assignments}, updated_at = NOW() WHERE id = %s RETURNING *", (*values, item_id))
-        updated = cur.fetchone()
-        if not updated:
-            return jsonify({'error': 'Dish not found'}), 404
-        conn.commit()
-        return jsonify(updated)
-    finally:
-        conn.close()
 
 # --- BOT LOGIC & STATE MACHINE ---
 def process_message(message):
@@ -416,7 +246,7 @@ def process_message(message):
 # --- META CLOUD API HELPERS ---
 def show_menu(phone_number, cur):
     """Fetches menu from DB and sends as an interactive list."""
-    cur.execute("SELECT * FROM menu WHERE inventory > 0 AND is_active = TRUE ORDER BY name")
+    cur.execute("SELECT * FROM menu WHERE inventory > 0")
     items = cur.fetchall()
     
     if not items:
