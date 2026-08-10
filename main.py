@@ -117,20 +117,53 @@ def admin_dashboard():
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute("""
             SELECT
-              COALESCE(SUM(total_amount) FILTER (WHERE paid_at::date = CURRENT_DATE), 0) AS today_revenue,
-              COUNT(*) FILTER (WHERE paid_at::date = CURRENT_DATE) AS today_orders,
-              COUNT(*) FILTER (WHERE status IN ('Paid', 'Preparation', 'Ready')) AS active_orders,
-              COUNT(*) FILTER (WHERE status = 'Collected' AND completed_at::date = CURRENT_DATE) AS completed_today,
-              COALESCE(AVG(total_amount) FILTER (WHERE paid_at::date = CURRENT_DATE), 0)::integer AS average_order_value
+            COALESCE(
+                SUM(total_amount) FILTER (
+                WHERE status IN ('Paid', 'Preparation', 'Ready', 'Collected')
+                AND COALESCE(paid_at, created_at)::date = CURRENT_DATE
+                ),
+                0
+            )::integer AS today_revenue,
+
+            COUNT(*) FILTER (
+                WHERE status IN ('Paid', 'Preparation', 'Ready', 'Collected')
+                AND COALESCE(paid_at, created_at)::date = CURRENT_DATE
+            ) AS today_orders,
+
+            COUNT(*) FILTER (
+                WHERE status IN ('Paid', 'Preparation', 'Ready')
+            ) AS active_orders,
+
+            COUNT(*) FILTER (
+                WHERE status = 'Collected'
+                AND COALESCE(completed_at, updated_at)::date = CURRENT_DATE
+            ) AS completed_today,
+
+            COALESCE(
+                AVG(total_amount) FILTER (
+                WHERE status IN ('Paid', 'Preparation', 'Ready', 'Collected')
+                AND COALESCE(paid_at, created_at)::date = CURRENT_DATE
+                ),
+                0
+            )::integer AS average_order_value
             FROM orders
         """)
         summary = dict(cur.fetchone())
         cur.execute("""
-            SELECT d.day::date AS day, TO_CHAR(d.day, 'Dy') AS label,
-                   COALESCE(SUM(o.total_amount), 0)::integer AS revenue
-            FROM generate_series(CURRENT_DATE - INTERVAL '6 days', CURRENT_DATE, INTERVAL '1 day') d(day)
-            LEFT JOIN orders o ON o.paid_at::date = d.day::date
-            GROUP BY d.day ORDER BY d.day
+            SELECT
+            d.day::date AS day,
+            TO_CHAR(d.day, 'Dy') AS label,
+            COALESCE(SUM(o.total_amount), 0)::integer AS revenue
+            FROM generate_series(
+            CURRENT_DATE - INTERVAL '6 days',
+            CURRENT_DATE,
+            INTERVAL '1 day'
+            ) d(day)
+            LEFT JOIN orders o
+            ON COALESCE(o.paid_at, o.created_at)::date = d.day::date
+            AND o.status IN ('Paid', 'Preparation', 'Ready', 'Collected')
+            GROUP BY d.day
+            ORDER BY d.day
         """)
         summary['sales_last_7_days'] = cur.fetchall()
         return jsonify(summary)
@@ -167,7 +200,12 @@ def admin_update_order_status(order_id):
     conn = get_db_connection()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("SELECT status FROM orders WHERE order_id = %s FOR UPDATE", (order_id,))
+        cur.execute("""
+            SELECT status, phone_number, order_type
+            FROM orders
+            WHERE order_id = %s
+            FOR UPDATE
+        """, (order_id,))
         order = cur.fetchone()
         if not order:
             return jsonify({'error': 'Order not found'}), 404
@@ -181,7 +219,32 @@ def admin_update_order_status(order_id):
         """, (new_status, new_status, order_id))
         updated = cur.fetchone()
         conn.commit()
+        
+        status_messages = {
+            "Preparation": (
+                f"✅ Order {order_id} accepted — we're preparing it now."
+            ),
+            "Ready": (
+                f"🥡 Order {order_id} is ready for collection."
+                if order["order_type"] == "Takeaway"
+                else f"🍽️ Order {order_id} is ready to be served."
+            ),
+            "Collected": (
+                f"✅ Order {order_id} collected — thank you for ordering with us!"
+            ),
+        }
+
+        message = status_messages.get(new_status)
+
+        if message and order["phone_number"]:
+            try:
+                send_reply(order["phone_number"], message)
+            except Exception as exc:
+                # Do not reverse the status update if WhatsApp delivery fails.
+                print(f"Unable to send order status message: {exc}")
+
         return jsonify(updated)
+    
     finally:
         conn.close()
 
