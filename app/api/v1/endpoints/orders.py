@@ -38,7 +38,9 @@ from app.models.enums import (
 from app.models.user import (
     StaffUser,
 )
-
+from legacy.whatsapp_payment_app import (
+    send_reply,
+)
 
 # ============================================================
 # ROUTER
@@ -1384,6 +1386,41 @@ def update_order_status(
         # ----------------------------------------------------
 
         db.commit()
+
+        # ----------------------------------------------------
+        # WHATSAPP - ORDER READY
+        # ----------------------------------------------------
+
+        if (
+            current_status == "Preparation"
+            and target_status == "Ready"
+        ):
+            customer_phone = (
+                updated_order.get(
+                    "phone_number"
+                )
+            )
+
+            if customer_phone:
+                try:
+                    send_reply(
+                        str(customer_phone),
+                        (
+                            "✅ *Order Ready!*\n\n"
+                            f"Your order ({order_id}) "
+                            "has been prepared and is "
+                            "ready to be collected.\n\n"
+                            "Thank you for choosing "
+                            "Watave's Biriyani Point!"
+                        ),
+                    )
+
+                except Exception as exc:
+                    print(
+                        "Could not send Ready "
+                        "WhatsApp notification:",
+                        exc,
+                    )
 
         # ----------------------------------------------------
         # RETURN FRESH ORDER
