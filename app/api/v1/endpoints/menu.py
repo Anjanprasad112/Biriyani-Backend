@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import (
     APIRouter,
@@ -49,6 +49,17 @@ MANAGEMENT = (
 
 
 # ============================================================
+# MENU CATEGORY
+# ============================================================
+
+MenuCategory = Literal[
+    "BIRYANI",
+    "CHICKEN_65_WEIGHT",
+    "CHICKEN_65_PACKS",
+]
+
+
+# ============================================================
 # REQUEST MODELS
 #
 # track_inventory = False
@@ -81,6 +92,8 @@ class MenuCreateRequest(BaseModel):
 
     is_active: bool = True
 
+    category: MenuCategory
+
 
 class MenuUpdateRequest(BaseModel):
 
@@ -103,6 +116,8 @@ class MenuUpdateRequest(BaseModel):
     track_inventory: bool | None = None
 
     is_active: bool | None = None
+
+    category: MenuCategory | None = None
 
 
 # ============================================================
@@ -303,7 +318,8 @@ def create_menu_item(
                         price,
                         inventory,
                         track_inventory,
-                        is_active
+                        is_active,
+                        category
                     )
 
                     VALUES (
@@ -311,7 +327,8 @@ def create_menu_item(
                         :price,
                         :inventory,
                         :track_inventory,
-                        :is_active
+                        :is_active,
+                        :category
                     )
 
                     RETURNING *
@@ -332,6 +349,9 @@ def create_menu_item(
 
                     "is_active":
                         payload.is_active,
+
+                    "category":
+                        payload.category,
                 },
             )
             .mappings()
@@ -389,6 +409,7 @@ def create_menu_item(
 #   inventory
 #   track_inventory
 #   is_active
+#   category
 #
 # KITCHEN / CASHIER:
 #   is_active ONLY
@@ -585,6 +606,7 @@ def update_menu_item(
         "inventory",
         "track_inventory",
         "is_active",
+        "category",
     }
 
 

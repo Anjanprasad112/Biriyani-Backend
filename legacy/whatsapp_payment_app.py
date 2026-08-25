@@ -3635,7 +3635,7 @@ def show_categories(
                     "cat_biryani",
 
                 "title":
-                    "🍚 Dum Biryani",
+                    "🍚 Biryani",
             },
             {
                 "id":
@@ -3661,7 +3661,7 @@ def show_category_menu(
     category,
 ):
     if category == "biryani":
-        title = "Dum Biryani"
+        title = "Biryani"
 
         cur.execute(
             """
@@ -3676,8 +3676,7 @@ def show_category_menu(
                     OR inventory > 0
                 )
 
-                AND LOWER(name)
-                    LIKE '%dum biryani%'
+                AND category = 'BIRYANI'
 
             ORDER BY name
             """
@@ -3702,11 +3701,7 @@ def show_category_menu(
                     OR inventory > 0
                 )
 
-                AND LOWER(name)
-                    LIKE '%chicken 65%'
-
-                AND LOWER(name)
-                    NOT LIKE '%pack%'
+                AND category = 'CHICKEN_65_WEIGHT'
 
             ORDER BY
                 price,
@@ -3733,11 +3728,7 @@ def show_category_menu(
                     OR inventory > 0
                 )
 
-                AND LOWER(name)
-                    LIKE '%chicken 65%'
-
-                AND LOWER(name)
-                    LIKE '%pack%'
+                AND category = 'CHICKEN_65_PACKS'
 
             ORDER BY
                 price,
