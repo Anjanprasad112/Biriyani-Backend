@@ -2930,6 +2930,11 @@ def process_message(
                         "chicken65_packs",
                         "CHOOSE_ITEM_65_PACK",
                     ),
+                "cat_other": 
+                    (
+                        "other",
+                        "CHOOSE_ITEM_OTHER",
+                    ),
             }
 
             selected = (
@@ -2985,6 +2990,7 @@ def process_message(
             "CHOOSE_ITEM_BIRYANI",
             "CHOOSE_ITEM_65_WEIGHT",
             "CHOOSE_ITEM_65_PACK",
+            "CHOOSE_ITEM_OTHER"
         }:
             if (
                 interactive_id
@@ -3626,34 +3632,56 @@ def process_message(
 def show_categories(
     phone_number,
 ):
-    send_button_message(
+    rows = [
+        {
+            "id":
+                "cat_biryani",
+
+            "title":
+                "🍚 Dum Biryani",
+
+            "description":
+                "Veg, Egg, Chicken & Mutton",
+        },
+        {
+            "id":
+                "cat_65_weight",
+
+            "title":
+                "🍗 Chicken 65 Weight",
+
+            "description":
+                "Chicken 65 by weight",
+        },
+        {
+            "id":
+                "cat_65_packs",
+
+            "title":
+                "🍗 Chicken 65 Packs",
+
+            "description":
+                "Chicken 65 value packs",
+        },
+        {
+            "id":
+                "cat_other",
+
+            "title":
+                "🍽️ Other",
+
+            "description":
+                "Other available items",
+        },
+    ]
+
+    send_list_message(
         phone_number,
         "🍽️ *Choose a Menu Category*",
-        [
-            {
-                "id":
-                    "cat_biryani",
-
-                "title":
-                    "🍚 Dum Biryani",
-            },
-            {
-                "id":
-                    "cat_65_weight",
-
-                "title":
-                    "🍗 Chicken 65 Weight",
-            },
-            {
-                "id":
-                    "cat_65_packs",
-
-                "title":
-                    "🍗 Chicken 65 Packs",
-            },
-        ],
+        "View Categories",
+        "Menu Categories",
+        rows,
     )
-
 
 def show_category_menu(
     phone_number,
@@ -3744,6 +3772,37 @@ def show_category_menu(
                 name
             """
         )
+    elif (
+        category
+        == "other"
+    ):
+        title = "Other"
+
+        cur.execute(
+            """
+            SELECT *
+            FROM menu
+
+            WHERE
+                is_active = TRUE
+
+                AND (
+                    track_inventory = FALSE
+                    OR inventory > 0
+                )
+
+                AND LOWER(name)
+                    NOT LIKE '%dum biryani%'
+
+                AND LOWER(name)
+                    NOT LIKE '%chicken 65%'
+
+            ORDER BY
+                price,
+                name
+            """
+        )
+
 
     else:
         send_reply(
