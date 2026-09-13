@@ -1,7 +1,7 @@
 import json
 import os
 import uuid
-
+import time
 import psycopg2
 import razorpay
 import requests
@@ -2197,13 +2197,17 @@ def process_message(
 
                 payment_link_data = {
                     "amount":
-                        total * 100,
+                        total * 1,
 
                     "currency":
                         "INR",
 
                     "description":
                         "Watave's Biriyani Point",
+
+
+                    "expire_by":
+                        int(time.time()) + (10 * 60),
 
                     "customer": {
                         "contact":
