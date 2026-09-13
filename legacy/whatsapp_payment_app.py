@@ -2207,7 +2207,7 @@ def process_message(
 
 
                     "expire_by":
-                        int(time.time()) + (10 * 60),
+                        int(time.time()) + (15 * 60),
 
                     "customer": {
                         "contact":
