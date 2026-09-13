@@ -486,3 +486,15 @@ idx_order_status_history_changed_at
 ON order_status_history(
     changed_at DESC
 );
+
+ALTER TABLE menu
+ADD COLUMN IF NOT EXISTS track_inventory
+BOOLEAN NOT NULL DEFAULT FALSE;
+
+ALTER TABLE menu
+ADD COLUMN IF NOT EXISTS category
+VARCHAR(30);
+
+ALTER TABLE sessions
+ADD COLUMN IF NOT EXISTS last_activity_at
+TIMESTAMPTZ NOT NULL DEFAULT NOW();

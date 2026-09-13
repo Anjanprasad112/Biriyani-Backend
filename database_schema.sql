@@ -101,6 +101,10 @@ CREATE TABLE IF NOT EXISTS sessions (
     cart JSONB
         NOT NULL
         DEFAULT '[]'::jsonb
+        
+    last_activity_at TIMESTAMPTZ
+        NOT NULL
+        DEFAULT NOW()
 );
 
 
@@ -133,6 +137,12 @@ CREATE TABLE IF NOT EXISTS menu (
     updated_at TIMESTAMPTZ
         NOT NULL
         DEFAULT NOW(),
+
+    track_inventory BOOLEAN
+        NOT NULL
+        DEFAULT FALSE,
+
+    category VARCHAR(30),
 
     CONSTRAINT menu_price_non_negative
         CHECK (
