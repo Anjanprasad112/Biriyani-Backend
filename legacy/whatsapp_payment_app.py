@@ -1329,8 +1329,10 @@ def process_message(
                 send_reply(
                     sender_phone,
                     (
-                        "⏰ Your ordering session has expired.\n\n"
-                        "Please send *Hi* to start a new order."
+                        "Hello! 👋\n\n"
+                        "Thank you for connecting with "
+                        "Watave's Biriyani Point. 🍛\n\n"
+                        "Please type *Hi* to place your order."
                     ),
                 )
 
