@@ -1514,13 +1514,29 @@ def process_message(
                 )
 
             else:
+                cur.execute(
+                    """
+                    DELETE FROM sessions
+                    WHERE phone_number = %s
+                    """,
+                    (
+                        sender_phone,
+                    ),
+                )
+
+                conn.commit()
+
                 send_reply(
                     sender_phone,
                     (
-                        "Please tap Takeaway "
-                        "or Dine-in."
+                        "Hello! 👋\n\n"
+                        "Thank you for connecting with "
+                        "Watave's Biriyani Point. 🍛\n\n"
+                        "Please type *Hi* to place your order."
                     ),
                 )
+
+                return
 
         # ====================================================
         # STEP 2 — TABLE
