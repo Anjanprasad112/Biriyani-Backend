@@ -2197,7 +2197,7 @@ def process_message(
 
                 payment_link_data = {
                     "amount":
-                        total * 1,
+                        total * 100,
 
                     "currency":
                         "INR",
@@ -2207,7 +2207,7 @@ def process_message(
 
 
                     "expire_by":
-                        int(time.time()) + (15 * 60),
+                        int(time.time()) + (17 * 60),
 
                     "customer": {
                         "contact":
